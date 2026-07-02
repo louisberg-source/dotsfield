@@ -215,9 +215,11 @@
       if (shape === 'squares') {
         const s = r * 1.8; c.fillRect(cx - s / 2, cy - s / 2, s, s);
       } else if (shape === 'crosses') {
-        const s = r * 2, th = Math.max(1, r * 0.55);
-        c.fillRect(cx - s / 2, cy - th / 2, s, th);
-        c.fillRect(cx - th / 2, cy - s / 2, th, s);
+        const s = r * 2, th = Math.max(1, r * 0.5);
+        c.save(); c.translate(cx, cy); c.rotate(Math.PI / 4);   // rotate a plus 45° → an X
+        c.fillRect(-s / 2, -th / 2, s, th);
+        c.fillRect(-th / 2, -s / 2, th, s);
+        c.restore();
       } else if (shape === 'ascii') {
         const ch = ASCII_RAMP[Math.min(ASCII_RAMP.length - 1, Math.round(d.sc * (ASCII_RAMP.length - 1)))];
         if (ch !== ' ') c.fillText(ch, cx, cy);
