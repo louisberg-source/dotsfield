@@ -71,6 +71,12 @@
     <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="90" value="32"></div>
 
     <div class="divider"></div>
+    <div class="seg" id="shapeseg">
+      <button data-shape="dots" class="on">Dots</button>
+      <button data-shape="squares">Squares</button>
+      <button data-shape="crosses">Crosses</button>
+      <button data-shape="ascii">ASCII</button>
+    </div>
     <div class="hexrow">
       <label>Dot colour</label>
       <input type="color" id="dotSw" value="#ffffff">
@@ -101,7 +107,7 @@
       <button id="png">Download PNG (1080×1350)</button>
       <button id="rec">● Record 5s clip</button>
     </div>
-    <p class="hint">PNG = current frame. Record = captures 5 seconds of the motion as a video and downloads it automatically.</p>
+    <p class="hint">Tip: lower the Density (and/or raise Dot size) to make Squares, Crosses and ASCII read clearly. PNG = current frame. Record = captures 5 seconds of the motion as a video and downloads it automatically.</p>
   </aside>
 </div>
 
@@ -134,7 +140,7 @@
     return { x: dphidy, y: -dphidx };
   }
 
-  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000' };
+  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000', shape:'dots' };
   let dots = [], t = 0, paused = false;
 
   // cut-out mask state — declared early so buildDots()/step() can reference it
@@ -187,10 +193,16 @@
     }
   }
 
+  const ASCII_RAMP = ' .:-=+*#%@';                   // sparse → dense, indexed by size pulse
   function draw(c, w, h) {
     c.clearRect(0, 0, w, h);
     if (P.bg !== 'transparent') { c.fillStyle = P.bgHex; c.fillRect(0, 0, w, h); }
     const base = dotRadiusPx(w, h);
+    const shape = P.shape;
+    if (shape === 'ascii') {
+      c.font = Math.max(6, Math.round(base * 2.6)) + 'px "SFMono-Regular",Menlo,Consolas,monospace';
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+    }
     for (const d of dots) {
       if (mask) {                                    // show inside-only or outside-only
         const inside = fieldAt(d.hx, d.hy) > 0.5;
@@ -199,7 +211,19 @@
       const r = base * d.sc;
       if (r < 0.25) continue;
       c.fillStyle = (P.col === 'gold' && d.gold) ? '#F5A500' : P.dotHex;
-      c.beginPath(); c.arc(d.x * w, d.y * h, r, 0, 6.2832); c.fill();
+      const cx = d.x * w, cy = d.y * h;
+      if (shape === 'squares') {
+        const s = r * 1.8; c.fillRect(cx - s / 2, cy - s / 2, s, s);
+      } else if (shape === 'crosses') {
+        const s = r * 2, th = Math.max(1, r * 0.55);
+        c.fillRect(cx - s / 2, cy - th / 2, s, th);
+        c.fillRect(cx - th / 2, cy - s / 2, th, s);
+      } else if (shape === 'ascii') {
+        const ch = ASCII_RAMP[Math.min(ASCII_RAMP.length - 1, Math.round(d.sc * (ASCII_RAMP.length - 1)))];
+        if (ch !== ' ') c.fillText(ch, cx, cy);
+      } else {
+        c.beginPath(); c.arc(cx, cy, r, 0, 6.2832); c.fill();
+      }
     }
   }
 
@@ -260,6 +284,10 @@
   dotHexIn.addEventListener('input', () => { const n = normHex(dotHexIn.value); if (n) setDotColour(n); });
   bgSw.addEventListener('input', () => { setBgColour(bgSw.value); if (P.bg === 'transparent') setTransparent(false); });
   bgHexIn.addEventListener('input', () => { const n = normHex(bgHexIn.value); if (n) { setBgColour(n); if (P.bg === 'transparent') setTransparent(false); } });
+  document.getElementById('shapeseg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...e.currentTarget.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); P.shape = b.dataset.shape;
+  });
   document.getElementById('reset').onclick = () => { t = 0; buildDots(); };
   document.getElementById('pause').onclick = (e) => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
 
