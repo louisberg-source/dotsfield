@@ -68,7 +68,7 @@
     <div class="ctl"><div class="top"><label>Flow</label><span class="val" id="flowV"></span></div><input id="flow" type="range" min="0" max="100" value="55"></div>
     <div class="ctl"><div class="top"><label>Randomness</label><span class="val" id="randV"></span></div><input id="rand" type="range" min="0" max="100" value="35"></div>
     <div class="ctl"><div class="top"><label>Density</label><span class="val" id="densityV"></span></div><input id="density" type="range" min="200" max="10000" value="5200" step="100"></div>
-    <div class="ctl"><div class="top"><label>Spacing</label><span class="val" id="spacingV"></span></div><input id="spacing" type="range" min="40" max="300" value="100"></div>
+    <div class="ctl"><div class="top"><label>Spacing</label><span class="val" id="spacingV"></span></div><input id="spacing" type="range" min="25" max="175" value="100"></div>
     <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="90" value="32"></div>
 
     <div class="divider"></div>
@@ -160,8 +160,7 @@
   let gridCols = 1, gridRows = 1, spacingX = 1, spacingY = 1;
 
   function buildDots() {
-    // Density alone sets the lattice size / dot count. Spacing no longer touches
-    // this — it only scales each dot's radius vs its cell (see dotRadiusPx).
+    // Density alone sets the lattice size / dot count.
     const eff = P.density;
     gridCols = Math.max(2, Math.round(Math.sqrt(eff * (RW / RH))));
     gridRows = Math.max(2, Math.round(eff / gridCols));
@@ -171,16 +170,28 @@
       const hx = (c + 0.5) / gridCols, hy = (r + 0.5) / gridRows;
       dots.push({ hx, hy, x: hx, y: hy, ph: Math.random() * 6.283, sc: 1, gold: Math.random() < 0.14 });
     }
+    reposition();
   }
 
-  // radius (px) of every dot at a given render width. Spacing scales how much of
-  // each cell a dot fills: Compact → dots grow to touch their neighbours; Wide →
-  // dots shrink so big gaps open up. Count stays fixed (that's Density's job).
+  // Spacing spreads the whole lattice apart / pulls it together around the centre.
+  // Count and dot size stay fixed — only the gap between dots changes. Compact
+  // (<1) pulls dots in until they overlap into a mesh; Wide (>1) fans them out.
+  // hx/hy stay the untouched base coords (used for noise + mask sampling) so the
+  // pattern identity is stable; x/y are the scaled render positions.
+  function reposition() {
+    const S = P.spacing;
+    for (const d of dots) {
+      d.x = 0.5 + (d.hx - 0.5) * S;
+      d.y = 0.5 + (d.hy - 0.5) * S;
+    }
+  }
+
+  // radius (px) of every dot — driven purely by Dot size, independent of Spacing,
+  // so dots keep the same size no matter how far apart they sit. Capped at a
+  // half-cell of the base lattice; Spacing compression is what makes them overlap.
   function dotRadiusPx(w, h) {
     const cell = Math.min(spacingX * w, spacingY * h);
-    const spacingMul = 1 / P.spacing;                    // compact (<1) → bigger, wide (>1) → smaller
-    const r = 0.5 * cell * P.size * spacingMul;
-    return Math.max(0.5, Math.min(0.5 * cell, r));       // cap at half-cell = just touching
+    return Math.max(0.5, Math.min(0.5 * cell, P.size * 0.5 * cell));
   }
 
   // Dots stay on their grid home; a flowing noise wave pulses each dot's size
@@ -249,7 +260,7 @@
 
   function bindSlider(id, key, fmt, transform) {
     const el = document.getElementById(id), out = document.getElementById(id + 'V');
-    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density') buildDots(); };
+    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density') buildDots(); else if (key === 'spacing') reposition(); };
     el.addEventListener('input', apply); apply();
   }
   bindSlider('speed','speed', v=>v+'%', v=>v/100);
