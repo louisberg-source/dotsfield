@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dot Field — Organic Pattern Generator</title>
+<style>
+  :root { --gold:#F5A500; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; background:#0e0e0e; color:#fff; font-family:-apple-system,'Segoe UI',sans-serif; overflow:hidden; }
+  .wrap { display:flex; height:100%; }
+
+  .stageWrap { flex:1; display:flex; align-items:center; justify-content:center; padding:24px; min-width:0; }
+  .stage { position:relative; height:100%; aspect-ratio:1080/1350; max-width:100%; border-radius:10px; overflow:hidden;
+           box-shadow:0 20px 60px rgba(0,0,0,.5);
+           background:
+             linear-gradient(45deg,#1a1a1a 25%,transparent 25%,transparent 75%,#1a1a1a 75%),
+             linear-gradient(45deg,#1a1a1a 25%,#141414 25%,#141414 75%,#1a1a1a 75%);
+           background-size:24px 24px; background-position:0 0,12px 12px; }
+  .stage canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  .panel { width:300px; flex:none; background:#161616; border-left:1px solid #262626; padding:22px 20px;
+           overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+  .panel h1 { font-size:15px; font-weight:700; letter-spacing:.01em; }
+  .panel .sub { font-size:11px; color:rgba(255,255,255,.45); line-height:1.5; margin-bottom:18px; }
+
+  .ctl { margin:11px 0; }
+  .ctl .top { display:flex; justify-content:space-between; font-size:11px; margin-bottom:5px; }
+  .ctl .top label { color:rgba(255,255,255,.75); }
+  .ctl .top .val { color:var(--gold); font-variant-numeric:tabular-nums; }
+  input[type=range]{ width:100%; accent-color:var(--gold); height:4px; cursor:pointer; }
+
+  .seg { display:flex; gap:5px; margin:8px 0; }
+  .seg button { flex:1; padding:7px 0; font-size:11px; border:1px solid rgba(255,255,255,.14);
+                background:transparent; color:rgba(255,255,255,.7); border-radius:5px; cursor:pointer; }
+  .seg button.on { background:#fff; color:#000; border-color:#fff; font-weight:600; }
+  .seg button:hover:not(.on){ border-color:rgba(255,255,255,.35); }
+
+  .divider { height:1px; background:#262626; margin:14px 0 6px; }
+  .actions { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+  .actions button { padding:11px; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; letter-spacing:.02em; }
+  #pause { background:#2a2a2a; color:#fff; }
+  #reset { background:#2a2a2a; color:#fff; }
+  #png { background:#fff; color:#000; }
+  #rec { background:var(--gold); color:#000; }
+  #rec.recording { background:#e23b3b; color:#fff; }
+  .actions button:hover { opacity:.88; }
+  .hint { font-size:10px; color:rgba(255,255,255,.35); margin-top:10px; line-height:1.5; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stageWrap"><div class="stage"><canvas id="cv"></canvas></div></div>
+
+  <aside class="panel">
+    <h1>Dot Field 🕶️</h1>
+    <p class="sub">Organic curl-noise dots. Drag the sliders — motion stays curved (no straight lines), forming shifting patterns.</p>
+
+    <div class="ctl"><div class="top"><label>Speed</label><span class="val" id="speedV"></span></div><input id="speed" type="range" min="0" max="100" value="40"></div>
+    <div class="ctl"><div class="top"><label>Flow</label><span class="val" id="flowV"></span></div><input id="flow" type="range" min="0" max="100" value="55"></div>
+    <div class="ctl"><div class="top"><label>Randomness</label><span class="val" id="randV"></span></div><input id="rand" type="range" min="0" max="100" value="35"></div>
+    <div class="ctl"><div class="top"><label>Density</label><span class="val" id="densityV"></span></div><input id="density" type="range" min="200" max="10000" value="5200" step="100"></div>
+    <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="90" value="32"></div>
+
+    <div class="divider"></div>
+    <div class="seg" id="bgseg">
+      <button data-bg="black" class="on">Black</button>
+      <button data-bg="white">White</button>
+      <button data-bg="transparent">None</button>
+    </div>
+    <div class="seg" id="colseg">
+      <button data-col="white" class="on">White dots</button>
+      <button data-col="gold">Gold</button>
+    </div>
+
+    <div class="divider"></div>
+    <div class="seg"><button id="upload">Upload image → cut out</button></div>
+    <div class="seg" id="fillseg" style="display:none;">
+      <button data-fill="outside" class="on">Dots outside</button>
+      <button data-fill="inside">Dots inside</button>
+    </div>
+    <button id="clearMask" style="display:none; width:100%; padding:7px; font-size:11px; background:#2a2a2a; color:#fff; border:none; border-radius:5px; cursor:pointer; margin-bottom:4px;">Clear cut-out</button>
+    <div class="ctl" id="padCtl" style="display:none;"><div class="top"><label>Mask padding</label><span class="val" id="padV"></span></div><input id="pad" type="range" min="0" max="100" value="22"></div>
+    <input id="file" type="file" accept="image/*" style="display:none;">
+    <div id="maskStatus" style="font-size:10px; color:var(--gold); min-height:13px; margin:4px 0; line-height:1.4;"></div>
+
+    <div class="divider"></div>
+    <div class="actions">
+      <button id="pause">Pause</button>
+      <button id="reset">Reshuffle</button>
+      <button id="png">Download PNG (1080×1350)</button>
+      <button id="rec">● Record GIF</button>
+    </div>
+    <p class="hint">PNG = current frame. Record = animated GIF of the motion (click again to stop, encode &amp; download). Auto-stops at ~8s.</p>
+  </aside>
+</div>
+
+<script>
+  const OUT_W = 1080, OUT_H = 1350;
+
+  // ---- value noise + curl flow field (divergence-free → swirling, no straight lines) ----
+  function hash(x, y) {
+    let h = (x * 374761393 + y * 668265263) | 0;
+    h = (h ^ (h >> 13)) | 0;
+    h = Math.imul(h, 1274126177) | 0;
+    return ((h ^ (h >> 16)) >>> 0) / 4294967295;
+  }
+  function vnoise(x, y) {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = x - xi, yf = y - yi;
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = hash(xi, yi), b = hash(xi + 1, yi), c = hash(xi, yi + 1), d = hash(xi + 1, yi + 1);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  let noiseScale = 2.4;
+  function potential(x, y, t) {
+    return vnoise(x * noiseScale + t * 0.13, y * noiseScale - t * 0.05)
+         + 0.5 * vnoise(x * noiseScale * 2.1 - t * 0.09, y * noiseScale * 2.1 + t * 0.07);
+  }
+  function curl(x, y, t) {
+    const e = 0.0015;
+    const dphidy = (potential(x, y + e, t) - potential(x, y - e, t)) / (2 * e);
+    const dphidx = (potential(x + e, y, t) - potential(x - e, y, t)) / (2 * e);
+    return { x: dphidy, y: -dphidx };
+  }
+
+  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside' };
+  let dots = [], t = 0, paused = false;
+
+  // cut-out mask state — declared early so buildDots()/step() can reference it
+  // during slider init (which runs before the mask code block below)
+  let mask = null, mgx = null, mgy = null, lastBin = null;
+  let padding = 0.22;
+
+  const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+  const RW = 720, RH = 900;                 // internal render res
+  cv.width = RW; cv.height = RH;
+
+  // ---- regular grid of equal dots ----
+  // Homes sit on a lattice sized from Density. Dots can't touch by construction
+  // (spacing guarantees it), so there's no separation solver and no edge-clamp
+  // jitter — each dot just sways smoothly around its home along a flow field.
+  let gridCols = 1, gridRows = 1, spacingX = 1, spacingY = 1;
+
+  function buildDots() {
+    gridCols = Math.max(2, Math.round(Math.sqrt(P.density * (RW / RH))));
+    gridRows = Math.max(2, Math.round(P.density / gridCols));
+    spacingX = 1 / gridCols; spacingY = 1 / gridRows;
+    dots = [];
+    for (let r = 0; r < gridRows; r++) for (let c = 0; c < gridCols; c++) {
+      const hx = (c + 0.5) / gridCols, hy = (r + 0.5) / gridRows;
+      dots.push({ hx, hy, x: hx, y: hy, ph: Math.random() * 6.283, sc: 1, gold: Math.random() < 0.14 });
+    }
+  }
+
+  // radius (px) of every dot at a given render width — uniform, capped so
+  // neighbours never overlap. Shared by draw + motion so ratios stay identical.
+  function dotRadiusPx(w, h) {
+    const cell = Math.min(spacingX * w, spacingY * h);
+    return Math.max(0.5, Math.min(0.42 * cell, P.size * 0.5 * cell));
+  }
+
+  // Dots stay on their grid home; a flowing noise wave pulses each dot's size
+  // small↔big as it travels across the field → organic "moving" effect.
+  const smoothstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+  function step() {
+    const NS = 1.5 + P.flow * 5;               // wave tightness (spatial frequency)
+    const drift = 0.3 + P.speed * 0.4;         // how fast the wave travels
+    for (const d of dots) {
+      const tt = t + d.ph * P.rand * 2.5;      // per-dot phase → organic, not uniform
+      let v = vnoise(d.hx * NS + tt * drift, d.hy * NS - tt * drift * 0.6);
+      v = 0.6 * v + 0.4 * vnoise(d.hx * NS * 2.2 - tt * drift * 0.8, d.hy * NS * 2.2 + tt * drift * 0.5);
+      const n = Math.min(1, v * 2);            // vnoise tops out near 0.5 → normalise to 0..1
+      const pulse = smoothstep(0.25, 0.85, n); // contrast so peaks pop, troughs fade
+      d.sc = 0.12 + pulse * 0.88;              // small ↔ big
+    }
+  }
+
+  function draw(c, w, h) {
+    c.clearRect(0, 0, w, h);
+    if (P.bg === 'black') { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); }
+    else if (P.bg === 'white') { c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); }
+    const base = dotRadiusPx(w, h);
+    const onWhite = (P.bg === 'white');
+    const dotCol = onWhite ? '#000' : '#fff';
+    for (const d of dots) {
+      if (mask) {                                    // show inside-only or outside-only
+        const inside = fieldAt(d.hx, d.hy) > 0.5;
+        if (P.fill === 'inside' ? !inside : inside) continue;
+      }
+      const r = base * d.sc;
+      if (r < 0.25) continue;
+      c.fillStyle = (P.col === 'gold' && d.gold) ? '#F5A500' : dotCol;
+      c.beginPath(); c.arc(d.x * w, d.y * h, r, 0, 6.2832); c.fill();
+    }
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (!paused) {
+      t += dt * (0.15 + P.speed * 1.6);
+      step();
+    }
+    draw(ctx, RW, RH);
+    if (recording && now - recLast >= 1000 / GIF_FPS) {
+      recLast = now;
+      recCtx.fillStyle = P.bg === 'white' ? '#fff' : '#000';
+      recCtx.fillRect(0, 0, GIF_W, GIF_H);
+      recCtx.drawImage(cv, 0, 0, GIF_W, GIF_H);
+      recFrames.push(recCtx.getImageData(0, 0, GIF_W, GIF_H).data);
+      if (recFrames.length >= GIF_MAX_FRAMES) stopRec();
+    }
+    requestAnimationFrame(loop);
+  }
+
+  function bindSlider(id, key, fmt, transform) {
+    const el = document.getElementById(id), out = document.getElementById(id + 'V');
+    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density') buildDots(); };
+    el.addEventListener('input', apply); apply();
+  }
+  bindSlider('speed','speed', v=>v+'%', v=>v/100);
+  bindSlider('flow','flow', v=>v+'%', v=>v/100);
+  bindSlider('rand','rand', v=>v+'%', v=>v/100);
+  bindSlider('density','density', v=>v, v=>v);
+  bindSlider('size','size', v=>v+'%', v=>v/100);
+
+  document.getElementById('bgseg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...e.currentTarget.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); P.bg = b.dataset.bg;
+  });
+  document.getElementById('colseg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...e.currentTarget.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); P.col = b.dataset.col;
+  });
+  document.getElementById('reset').onclick = () => { t = 0; buildDots(); };
+  document.getElementById('pause').onclick = (e) => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
+
+  // ---- download current frame at full output res ----
+  document.getElementById('png').onclick = () => {
+    const off = document.createElement('canvas'); off.width = OUT_W; off.height = OUT_H;
+    draw(off.getContext('2d'), OUT_W, OUT_H);
+    const a = document.createElement('a');
+    a.download = 'dotfield-' + Date.now() + '.png';
+    a.href = off.toDataURL('image/png'); a.click();
+  };
+
+  // ---- record live clip as an animated GIF ----
+  const GIF_W = 600, GIF_H = 750, GIF_FPS = 15, GIF_MAX_FRAMES = 120;   // ~8s cap
+  let recording = false, recFrames = [], recLast = 0, gifEnc = null;
+  const recCanvas = document.createElement('canvas'); recCanvas.width = GIF_W; recCanvas.height = GIF_H;
+  const recCtx = recCanvas.getContext('2d', { willReadFrequently: true });
+  const recBtn = document.getElementById('rec');
+
+  function startRec() {
+    recFrames = []; recLast = 0; recording = true;
+    recBtn.classList.add('recording'); recBtn.textContent = '■ Stop & save GIF';
+  }
+  async function stopRec() {
+    if (!recording) return;
+    recording = false;
+    recBtn.classList.remove('recording');
+    const frames = recFrames; recFrames = [];
+    if (!frames.length) { recBtn.textContent = '● Record GIF'; return; }
+    recBtn.disabled = true; recBtn.textContent = 'Encoding GIF…';
+    try {
+      if (!gifEnc) gifEnc = await import('https://esm.sh/gifenc@1.0.3');
+      const { GIFEncoder, quantize, applyPalette } = gifEnc;
+      const gif = GIFEncoder();
+      const delay = Math.round(1000 / GIF_FPS);
+      for (let i = 0; i < frames.length; i++) {
+        const data = frames[i];
+        const palette = quantize(data, 256);
+        const index = applyPalette(data, palette);
+        gif.writeFrame(index, GIF_W, GIF_H, { palette, delay });
+        if (i % 10 === 0) { recBtn.textContent = `Encoding… ${Math.round((i / frames.length) * 100)}%`; await new Promise(r => setTimeout(r)); }
+      }
+      gif.finish();
+      const blob = new Blob([gif.bytes()], { type: 'image/gif' });
+      const a = document.createElement('a');
+      a.download = 'dotfield-' + Date.now() + '.gif';
+      a.href = URL.createObjectURL(blob); a.click();
+    } catch (err) {
+      console.error(err); alert('GIF encode failed — see console');
+    } finally {
+      recBtn.disabled = false; recBtn.textContent = '● Record GIF';
+    }
+  }
+  recBtn.onclick = () => { if (recording) stopRec(); else startRec(); };
+
+  // ---- cut-out mask: dots can't enter the subject silhouette ----
+  // Field grid (4:5, matches 1080×1350). mask = smooth 0..1 (1 = deep inside
+  // subject); dots are repelled down its gradient so they flow around it. The
+  // source image is never drawn — only the dot-free hole reveals the shape.
+  const MW = 200, MH = 250;
+
+  function boxBlur(f) {
+    const o = new Float32Array(MW * MH);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      let s = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= MW || yy >= MH) continue;
+        s += f[yy * MW + xx]; n++;
+      }
+      o[y * MW + x] = s / n;
+    }
+    return o;
+  }
+  function buildField(bin) {
+    lastBin = bin;
+    const pad = Math.round(padding * 20);
+    let cur = bin;
+    for (let p = 0; p < pad; p++) {                 // dilate to add padding
+      const nx = new Uint8Array(MW * MH);
+      for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+        let v = cur[y * MW + x];
+        if (!v && ((x > 0 && cur[y*MW+x-1]) || (x < MW-1 && cur[y*MW+x+1]) ||
+                   (y > 0 && cur[(y-1)*MW+x]) || (y < MH-1 && cur[(y+1)*MW+x]))) v = 1;
+        nx[y * MW + x] = v;
+      }
+      cur = nx;
+    }
+    let f = new Float32Array(MW * MH);
+    for (let i = 0; i < f.length; i++) f[i] = cur[i] ? 1 : 0;
+    for (let b = 0; b < 6; b++) f = boxBlur(f);      // smooth ramp at the edge
+    mask = f;
+    mgx = new Float32Array(MW * MH); mgy = new Float32Array(MW * MH);
+    for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) {
+      const xl = Math.max(0,x-1), xr = Math.min(MW-1,x+1), yt = Math.max(0,y-1), yb = Math.min(MH-1,y+1);
+      mgx[y*MW+x] = f[y*MW+xr] - f[y*MW+xl];
+      mgy[y*MW+x] = f[yb*MW+x] - f[yt*MW+x];
+    }
+  }
+  function fieldAt(x, y) {
+    let ix = (x * MW) | 0, iy = (y * MH) | 0;
+    if (ix < 0) ix = 0; else if (ix >= MW) ix = MW - 1;
+    if (iy < 0) iy = 0; else if (iy >= MH) iy = MH - 1;
+    return mask[iy * MW + ix];
+  }
+  function gradAt(x, y) {
+    let ix = (x * MW) | 0, iy = (y * MH) | 0;
+    if (ix < 0) ix = 0; else if (ix >= MW) ix = MW - 1;
+    if (iy < 0) iy = 0; else if (iy >= MH) iy = MH - 1;
+    const i = iy * MW + ix;
+    return { x: mgx[i], y: mgy[i] };
+  }
+  function freeSpot() {
+    for (let k = 0; k < 50; k++) {
+      const x = Math.random(), y = Math.random();
+      if (fieldAt(x, y) < 0.12) return { x, y };
+    }
+    return { x: Math.random(), y: Math.random() };
+  }
+  function blobToImage(blob) {
+    return new Promise((res, rej) => { const img = new Image(); img.onload = () => res(img); img.onerror = rej; img.src = URL.createObjectURL(blob); });
+  }
+  function applyMaskFromImage(img) {
+    const mc = document.createElement('canvas'); mc.width = MW; mc.height = MH;
+    const mx = mc.getContext('2d');
+    const ar = img.width / img.height, AR = MW / MH;     // contain-fit, centred
+    let w, h; if (ar > AR) { w = MW; h = MW / ar; } else { h = MH; w = MH * ar; }
+    mx.clearRect(0, 0, MW, MH);
+    mx.drawImage(img, (MW - w) / 2, (MH - h) / 2, w, h);
+    const data = mx.getImageData(0, 0, MW, MH).data;
+    const bin = new Uint8Array(MW * MH);
+    for (let i = 0; i < MW * MH; i++) bin[i] = data[i * 4 + 3] > 128 ? 1 : 0;
+    buildField(bin);
+  }
+
+  let removeBg = null, busy = false;
+  const uploadBtn = document.getElementById('upload');
+  const st = document.getElementById('maskStatus');
+  const showMaskCtls = () => { document.getElementById('clearMask').style.display = 'block'; document.getElementById('padCtl').style.display = 'block'; document.getElementById('fillseg').style.display = 'flex'; };
+  document.getElementById('fillseg').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    [...e.currentTarget.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); P.fill = b.dataset.fill;
+  });
+
+  async function handleFile(file) {
+    if (!file || busy) return;
+    if (!/^image\//.test(file.type)) { st.textContent = '✗ That’s not an image file'; return; }
+    busy = true;
+    uploadBtn.disabled = true;
+    const label0 = uploadBtn.textContent;
+    uploadBtn.textContent = 'Working…';
+    try {
+      st.textContent = self.crossOriginIsolated ? 'Loading cut-out engine…' : 'Loading cut-out engine… (single-thread, slower)';
+      if (!removeBg) { const mod = await import('https://esm.sh/@imgly/background-removal@1.7.0'); removeBg = mod.removeBackground; }
+      const blob = await removeBg(file, {
+        progress: (key, cur, total) => {
+          const pct = total ? Math.round((cur / total) * 100) : 0;
+          if (key && key.startsWith('fetch')) st.textContent = `Downloading model… ${pct}% (first run only)`;
+          else st.textContent = `Cutting out subject… ${pct}%`;
+        }
+      });
+      applyMaskFromImage(await blobToImage(blob));
+      st.textContent = '✓ Cut-out applied — dots flow around it';
+      showMaskCtls();
+    } catch (err) {
+      console.error(err);
+      try {                                              // fallback: use the image's own alpha (pre-cut PNG)
+        applyMaskFromImage(await blobToImage(file));
+        st.textContent = '⚠ Auto cut-out unavailable — used image transparency as the mask';
+        showMaskCtls();
+      } catch (e2) { st.textContent = '✗ Could not build a mask from this image'; }
+    } finally {
+      busy = false; uploadBtn.disabled = false; uploadBtn.textContent = label0;
+    }
+  }
+
+  uploadBtn.onclick = () => { if (!busy) document.getElementById('file').click(); };
+  document.getElementById('file').onchange = (e) => { const f = e.target.files[0]; e.target.value = ''; handleFile(f); };
+
+  // drag & drop anywhere on the stage
+  const stageEl = document.querySelector('.stage');
+  ['dragenter','dragover'].forEach(ev => stageEl.addEventListener(ev, e => { e.preventDefault(); stageEl.style.outline = '2px dashed var(--gold)'; }));
+  ['dragleave','drop'].forEach(ev => stageEl.addEventListener(ev, e => { e.preventDefault(); stageEl.style.outline = 'none'; }));
+  stageEl.addEventListener('drop', e => { const f = e.dataTransfer?.files?.[0]; if (f) handleFile(f); });
+  document.getElementById('clearMask').onclick = () => {
+    mask = mgx = mgy = lastBin = null;
+    document.getElementById('clearMask').style.display = 'none';
+    document.getElementById('padCtl').style.display = 'none';
+    document.getElementById('fillseg').style.display = 'none';
+    document.getElementById('maskStatus').textContent = '';
+  };
+  (() => {
+    const el = document.getElementById('pad'), out = document.getElementById('padV');
+    const apply = () => { padding = +el.value / 100; out.textContent = el.value + '%'; if (lastBin) buildField(lastBin); };
+    el.addEventListener('input', apply); apply();
+  })();
+
+  buildDots();
+  requestAnimationFrame(loop);
+</script>
+</body>
+</html>
