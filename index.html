@@ -89,9 +89,9 @@
       <button id="pause">Pause</button>
       <button id="reset">Reshuffle</button>
       <button id="png">Download PNG (1080×1350)</button>
-      <button id="rec">● Record GIF</button>
+      <button id="rec">● Record 5s clip</button>
     </div>
-    <p class="hint">PNG = current frame. Record = animated GIF of the motion (click again to stop, encode &amp; download). Auto-stops at ~8s.</p>
+    <p class="hint">PNG = current frame. Record = captures 5 seconds of the motion as a video and downloads it automatically.</p>
   </aside>
 </div>
 
@@ -204,14 +204,6 @@
       step();
     }
     draw(ctx, RW, RH);
-    if (recording && now - recLast >= 1000 / GIF_FPS) {
-      recLast = now;
-      recCtx.fillStyle = P.bg === 'white' ? '#fff' : '#000';
-      recCtx.fillRect(0, 0, GIF_W, GIF_H);
-      recCtx.drawImage(cv, 0, 0, GIF_W, GIF_H);
-      recFrames.push(recCtx.getImageData(0, 0, GIF_W, GIF_H).data);
-      if (recFrames.length >= GIF_MAX_FRAMES) stopRec();
-    }
     requestAnimationFrame(loop);
   }
 
@@ -246,48 +238,61 @@
     a.href = off.toDataURL('image/png'); a.click();
   };
 
-  // ---- record live clip as an animated GIF ----
-  const GIF_W = 600, GIF_H = 750, GIF_FPS = 15, GIF_MAX_FRAMES = 120;   // ~8s cap
-  let recording = false, recFrames = [], recLast = 0, gifEnc = null;
-  const recCanvas = document.createElement('canvas'); recCanvas.width = GIF_W; recCanvas.height = GIF_H;
-  const recCtx = recCanvas.getContext('2d', { willReadFrequently: true });
+  // ---- record 5 seconds of the motion as a video (canvas capture → WebM/MP4) ----
+  const REC_SECONDS = 5, REC_FPS = 30;
+  let recording = false, mediaRec = null, recChunks = [], recTimer = null;
   const recBtn = document.getElementById('rec');
 
-  function startRec() {
-    recFrames = []; recLast = 0; recording = true;
-    recBtn.classList.add('recording'); recBtn.textContent = '■ Stop & save GIF';
+  function pickMime() {
+    const types = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm', 'video/mp4'];
+    return types.find(t => window.MediaRecorder && MediaRecorder.isTypeSupported(t)) || '';
   }
-  async function stopRec() {
+
+  function startRec() {
+    if (recording) return;
+    if (!cv.captureStream || !window.MediaRecorder) { alert('Video recording is not supported in this browser.'); return; }
+    let stream;
+    try { stream = cv.captureStream(REC_FPS); } catch (e) { console.error(e); alert('Could not capture the canvas — see console'); return; }
+    const mime = pickMime();
+    try {
+      mediaRec = mime ? new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 })
+                      : new MediaRecorder(stream);
+    } catch (e) { console.error(e); alert('Could not start the recorder — see console'); return; }
+    recChunks = [];
+    mediaRec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+    mediaRec.onstop = saveRec;
+    recording = true;
+    recBtn.classList.add('recording');
+    mediaRec.start();
+    let left = REC_SECONDS;
+    recBtn.textContent = `● Recording… ${left}s`;
+    recTimer = setInterval(() => { left--; if (left > 0) recBtn.textContent = `● Recording… ${left}s`; }, 1000);
+    setTimeout(stopRec, REC_SECONDS * 1000);
+  }
+
+  function stopRec() {
     if (!recording) return;
     recording = false;
+    clearInterval(recTimer); recTimer = null;
     recBtn.classList.remove('recording');
-    const frames = recFrames; recFrames = [];
-    if (!frames.length) { recBtn.textContent = '● Record GIF'; return; }
-    recBtn.disabled = true; recBtn.textContent = 'Encoding GIF…';
-    try {
-      if (!gifEnc) gifEnc = await import('https://esm.sh/gifenc@1.0.3');
-      const { GIFEncoder, quantize, applyPalette } = gifEnc;
-      const gif = GIFEncoder();
-      const delay = Math.round(1000 / GIF_FPS);
-      for (let i = 0; i < frames.length; i++) {
-        const data = frames[i];
-        const palette = quantize(data, 256);
-        const index = applyPalette(data, palette);
-        gif.writeFrame(index, GIF_W, GIF_H, { palette, delay });
-        if (i % 10 === 0) { recBtn.textContent = `Encoding… ${Math.round((i / frames.length) * 100)}%`; await new Promise(r => setTimeout(r)); }
-      }
-      gif.finish();
-      const blob = new Blob([gif.bytes()], { type: 'image/gif' });
-      const a = document.createElement('a');
-      a.download = 'dotfield-' + Date.now() + '.gif';
-      a.href = URL.createObjectURL(blob); a.click();
-    } catch (err) {
-      console.error(err); alert('GIF encode failed — see console');
-    } finally {
-      recBtn.disabled = false; recBtn.textContent = '● Record GIF';
-    }
+    recBtn.textContent = 'Saving…';
+    if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
   }
-  recBtn.onclick = () => { if (recording) stopRec(); else startRec(); };
+
+  function saveRec() {
+    const type = (mediaRec && mediaRec.mimeType) || 'video/webm';
+    const ext = type.includes('mp4') ? 'mp4' : 'webm';
+    const blob = new Blob(recChunks, { type });
+    recChunks = [];
+    const a = document.createElement('a');
+    a.download = 'dotfield-' + Date.now() + '.' + ext;
+    a.href = URL.createObjectURL(blob);
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    recBtn.textContent = '● Record 5s clip';
+  }
+
+  recBtn.onclick = () => { if (!recording) startRec(); };
 
   // ---- cut-out mask: dots can't enter the subject silhouette ----
   // Field grid (4:5, matches 1080×1350). mask = smooth 0..1 (1 = deep inside
