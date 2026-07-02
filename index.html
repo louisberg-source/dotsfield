@@ -68,6 +68,7 @@
     <div class="ctl"><div class="top"><label>Flow</label><span class="val" id="flowV"></span></div><input id="flow" type="range" min="0" max="100" value="55"></div>
     <div class="ctl"><div class="top"><label>Randomness</label><span class="val" id="randV"></span></div><input id="rand" type="range" min="0" max="100" value="35"></div>
     <div class="ctl"><div class="top"><label>Density</label><span class="val" id="densityV"></span></div><input id="density" type="range" min="200" max="10000" value="5200" step="100"></div>
+    <div class="ctl"><div class="top"><label>Spacing</label><span class="val" id="spacingV"></span></div><input id="spacing" type="range" min="50" max="250" value="100"></div>
     <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="90" value="32"></div>
 
     <div class="divider"></div>
@@ -140,7 +141,7 @@
     return { x: dphidy, y: -dphidx };
   }
 
-  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000', shape:'dots' };
+  const P = { speed:.4, flow:.55, rand:.35, density:5200, spacing:1, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000', shape:'dots' };
   let dots = [], t = 0, paused = false;
 
   // cut-out mask state — declared early so buildDots()/step() can reference it
@@ -159,8 +160,12 @@
   let gridCols = 1, gridRows = 1, spacingX = 1, spacingY = 1;
 
   function buildDots() {
-    gridCols = Math.max(2, Math.round(Math.sqrt(P.density * (RW / RH))));
-    gridRows = Math.max(2, Math.round(P.density / gridCols));
+    // Spacing widens (>1) or tightens (<1) the lattice pitch. We scale the dot
+    // count by 1/spacing² so the frame stays filled — wide = fewer, further-apart
+    // dots; compact = more, tightly-packed dots.
+    const eff = P.density / (P.spacing * P.spacing);
+    gridCols = Math.max(2, Math.round(Math.sqrt(eff * (RW / RH))));
+    gridRows = Math.max(2, Math.round(eff / gridCols));
     spacingX = 1 / gridCols; spacingY = 1 / gridRows;
     dots = [];
     for (let r = 0; r < gridRows; r++) for (let c = 0; c < gridCols; c++) {
@@ -242,13 +247,14 @@
 
   function bindSlider(id, key, fmt, transform) {
     const el = document.getElementById(id), out = document.getElementById(id + 'V');
-    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density') buildDots(); };
+    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density' || key === 'spacing') buildDots(); };
     el.addEventListener('input', apply); apply();
   }
   bindSlider('speed','speed', v=>v+'%', v=>v/100);
   bindSlider('flow','flow', v=>v+'%', v=>v/100);
   bindSlider('rand','rand', v=>v+'%', v=>v/100);
   bindSlider('density','density', v=>v, v=>v);
+  bindSlider('spacing','spacing', v => v < 90 ? 'Compact' : v > 110 ? 'Wide' : 'Normal', v=>v/100);
   bindSlider('size','size', v=>v+'%', v=>v/100);
 
   // ---- colour controls: swatch + hex text stay in sync ----
