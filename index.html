@@ -68,7 +68,7 @@
     <div class="ctl"><div class="top"><label>Flow</label><span class="val" id="flowV"></span></div><input id="flow" type="range" min="0" max="100" value="55"></div>
     <div class="ctl"><div class="top"><label>Randomness</label><span class="val" id="randV"></span></div><input id="rand" type="range" min="0" max="100" value="35"></div>
     <div class="ctl"><div class="top"><label>Density</label><span class="val" id="densityV"></span></div><input id="density" type="range" min="200" max="10000" value="5200" step="100"></div>
-    <div class="ctl"><div class="top"><label>Spacing</label><span class="val" id="spacingV"></span></div><input id="spacing" type="range" min="50" max="250" value="100"></div>
+    <div class="ctl"><div class="top"><label>Spacing</label><span class="val" id="spacingV"></span></div><input id="spacing" type="range" min="40" max="300" value="100"></div>
     <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="90" value="32"></div>
 
     <div class="divider"></div>
@@ -154,16 +154,15 @@
   cv.width = RW; cv.height = RH;
 
   // ---- regular grid of equal dots ----
-  // Homes sit on a lattice sized from Density. Dots can't touch by construction
-  // (spacing guarantees it), so there's no separation solver and no edge-clamp
-  // jitter — each dot just sways smoothly around its home along a flow field.
+  // Homes sit on a lattice sized purely from Density (the dot COUNT). Spacing is
+  // handled separately in dotRadiusPx as a fill ratio, so it changes how close the
+  // dots read (touching ↔ far apart) without adding or removing any dots.
   let gridCols = 1, gridRows = 1, spacingX = 1, spacingY = 1;
 
   function buildDots() {
-    // Spacing widens (>1) or tightens (<1) the lattice pitch. We scale the dot
-    // count by 1/spacing² so the frame stays filled — wide = fewer, further-apart
-    // dots; compact = more, tightly-packed dots.
-    const eff = P.density / (P.spacing * P.spacing);
+    // Density alone sets the lattice size / dot count. Spacing no longer touches
+    // this — it only scales each dot's radius vs its cell (see dotRadiusPx).
+    const eff = P.density;
     gridCols = Math.max(2, Math.round(Math.sqrt(eff * (RW / RH))));
     gridRows = Math.max(2, Math.round(eff / gridCols));
     spacingX = 1 / gridCols; spacingY = 1 / gridRows;
@@ -174,11 +173,14 @@
     }
   }
 
-  // radius (px) of every dot at a given render width — uniform, capped so
-  // neighbours never overlap. Shared by draw + motion so ratios stay identical.
+  // radius (px) of every dot at a given render width. Spacing scales how much of
+  // each cell a dot fills: Compact → dots grow to touch their neighbours; Wide →
+  // dots shrink so big gaps open up. Count stays fixed (that's Density's job).
   function dotRadiusPx(w, h) {
     const cell = Math.min(spacingX * w, spacingY * h);
-    return Math.max(0.5, Math.min(0.42 * cell, P.size * 0.5 * cell));
+    const spacingMul = 1 / P.spacing;                    // compact (<1) → bigger, wide (>1) → smaller
+    const r = 0.5 * cell * P.size * spacingMul;
+    return Math.max(0.5, Math.min(0.5 * cell, r));       // cap at half-cell = just touching
   }
 
   // Dots stay on their grid home; a flowing noise wave pulses each dot's size
@@ -247,7 +249,7 @@
 
   function bindSlider(id, key, fmt, transform) {
     const el = document.getElementById(id), out = document.getElementById(id + 'V');
-    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density' || key === 'spacing') buildDots(); };
+    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density') buildDots(); };
     el.addEventListener('input', apply); apply();
   }
   bindSlider('speed','speed', v=>v+'%', v=>v/100);
