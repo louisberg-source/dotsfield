@@ -36,6 +36,14 @@
   .seg button.on { background:#fff; color:#000; border-color:#fff; font-weight:600; }
   .seg button:hover:not(.on){ border-color:rgba(255,255,255,.35); }
 
+  .hexrow { display:flex; align-items:center; gap:8px; margin:8px 0; }
+  .hexrow label { font-size:11px; color:rgba(255,255,255,.75); flex:1; }
+  .hexrow input[type=color] { width:30px; height:26px; padding:0; border:1px solid rgba(255,255,255,.14);
+                              border-radius:4px; background:none; cursor:pointer; flex:none; }
+  .hexin { width:82px; background:#0e0e0e; border:1px solid rgba(255,255,255,.14); color:#fff; font-size:11px;
+           padding:6px 7px; border-radius:4px; font-variant-numeric:tabular-nums; text-transform:uppercase; flex:none; }
+  .hexin:focus { outline:none; border-color:var(--gold); }
+
   .divider { height:1px; background:#262626; margin:14px 0 6px; }
   .actions { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
   .actions button { padding:11px; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer; letter-spacing:.02em; }
@@ -71,6 +79,17 @@
     <div class="seg" id="colseg">
       <button data-col="white" class="on">White dots</button>
       <button data-col="gold">Gold</button>
+    </div>
+
+    <div class="hexrow">
+      <label>Dot colour</label>
+      <input type="color" id="dotSw" value="#ffffff">
+      <input type="text" id="dotHex" class="hexin" value="#FFFFFF" maxlength="7" spellcheck="false" placeholder="#RRGGBB">
+    </div>
+    <div class="hexrow">
+      <label>Background</label>
+      <input type="color" id="bgSw" value="#000000">
+      <input type="text" id="bgHex" class="hexin" value="#000000" maxlength="7" spellcheck="false" placeholder="#RRGGBB">
     </div>
 
     <div class="divider"></div>
@@ -124,7 +143,7 @@
     return { x: dphidy, y: -dphidx };
   }
 
-  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside' };
+  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000' };
   let dots = [], t = 0, paused = false;
 
   // cut-out mask state — declared early so buildDots()/step() can reference it
@@ -179,11 +198,8 @@
 
   function draw(c, w, h) {
     c.clearRect(0, 0, w, h);
-    if (P.bg === 'black') { c.fillStyle = '#000'; c.fillRect(0, 0, w, h); }
-    else if (P.bg === 'white') { c.fillStyle = '#fff'; c.fillRect(0, 0, w, h); }
+    if (P.bg !== 'transparent') { c.fillStyle = P.bgHex; c.fillRect(0, 0, w, h); }
     const base = dotRadiusPx(w, h);
-    const onWhite = (P.bg === 'white');
-    const dotCol = onWhite ? '#000' : '#fff';
     for (const d of dots) {
       if (mask) {                                    // show inside-only or outside-only
         const inside = fieldAt(d.hx, d.hy) > 0.5;
@@ -191,7 +207,7 @@
       }
       const r = base * d.sc;
       if (r < 0.25) continue;
-      c.fillStyle = (P.col === 'gold' && d.gold) ? '#F5A500' : dotCol;
+      c.fillStyle = (P.col === 'gold' && d.gold) ? '#F5A500' : P.dotHex;
       c.beginPath(); c.arc(d.x * w, d.y * h, r, 0, 6.2832); c.fill();
     }
   }
@@ -218,14 +234,49 @@
   bindSlider('density','density', v=>v, v=>v);
   bindSlider('size','size', v=>v+'%', v=>v/100);
 
-  document.getElementById('bgseg').addEventListener('click', e => {
+  // ---- colour controls: swatch + hex text stay in sync, segments preset them ----
+  const dotSw = document.getElementById('dotSw'), dotHexIn = document.getElementById('dotHex');
+  const bgSw  = document.getElementById('bgSw'),  bgHexIn  = document.getElementById('bgHex');
+  const bgseg = document.getElementById('bgseg'), colseg = document.getElementById('colseg');
+
+  // #RGB / #RRGGBB (with or without leading #) → normalised #RRGGBB, or null if invalid
+  function normHex(v) {
+    let s = String(v).trim().replace(/^#/, '');
+    if (/^[0-9a-fA-F]{3}$/.test(s)) s = s.split('').map(ch => ch + ch).join('');
+    if (/^[0-9a-fA-F]{6}$/.test(s)) return '#' + s.toUpperCase();
+    return null;
+  }
+  const setSeg = (seg, val, attr) => [...seg.children].forEach(b => b.classList.toggle('on', b.dataset[attr] === val));
+
+  function setDotColour(hex, { fromSeg } = {}) {
+    const n = normHex(hex); if (!n) return;
+    P.dotHex = n; dotSw.value = n; dotHexIn.value = n;
+    if (!fromSeg) { P.col = 'white'; setSeg(colseg, 'white', 'col'); }   // custom colour → drop gold accent
+  }
+  function setBgColour(hex, { keepMode } = {}) {
+    const n = normHex(hex); if (!n) return;
+    P.bgHex = n; bgSw.value = n; bgHexIn.value = n;
+    if (!keepMode) { P.bg = 'solid'; setSeg(bgseg, '__custom__', 'bg'); }  // custom colour → visible fill, no preset lit
+  }
+
+  bgseg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    [...e.currentTarget.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); P.bg = b.dataset.bg;
+    P.bg = b.dataset.bg;
+    setSeg(bgseg, P.bg, 'bg');
+    if (P.bg === 'black') setBgColour('#000000', { keepMode: true });
+    else if (P.bg === 'white') setBgColour('#FFFFFF', { keepMode: true });
   });
-  document.getElementById('colseg').addEventListener('click', e => {
+  colseg.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
-    [...e.currentTarget.children].forEach(x => x.classList.remove('on')); b.classList.add('on'); P.col = b.dataset.col;
+    P.col = b.dataset.col;
+    setSeg(colseg, P.col, 'col');
+    if (P.col === 'white') setDotColour('#FFFFFF', { fromSeg: true });
   });
+
+  dotSw.addEventListener('input', () => setDotColour(dotSw.value));
+  dotHexIn.addEventListener('input', () => { const n = normHex(dotHexIn.value); if (n) setDotColour(n); });
+  bgSw.addEventListener('input', () => setBgColour(bgSw.value));
+  bgHexIn.addEventListener('input', () => { const n = normHex(bgHexIn.value); if (n) setBgColour(n); });
   document.getElementById('reset').onclick = () => { t = 0; buildDots(); };
   document.getElementById('pause').onclick = (e) => { paused = !paused; e.target.textContent = paused ? 'Play' : 'Pause'; };
 
