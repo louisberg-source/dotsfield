@@ -71,6 +71,7 @@
     <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="140" value="32"></div>
 
     <div class="divider"></div>
+    <div class="seg"><button id="motionBtn" data-on="1" class="on">Motion: On</button></div>
     <div class="seg" id="shapeseg">
       <button data-shape="dots" class="on">Dots</button>
       <button data-shape="squares">Squares</button>
@@ -140,7 +141,7 @@
     return { x: dphidy, y: -dphidx };
   }
 
-  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000', shape:'dots' };
+  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000', shape:'dots', motion:true };
   let dots = [], t = 0, paused = false;
 
   // cut-out mask state — declared early so buildDots()/step() can reference it
@@ -232,7 +233,7 @@
   let last = performance.now();
   function loop(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (!paused) {
+    if (!paused && P.motion) {
       t += dt * (0.15 + P.speed * 1.6);
       step();
     }
@@ -281,6 +282,18 @@
     bgSw.disabled = bgHexIn.disabled = on;
   }
   transBtn.addEventListener('click', () => setTransparent(transBtn.dataset.on !== '1'));
+
+  // Motion toggle: On = dots pulse big/small; Off = every dot snaps to one uniform
+  // size and stops animating.
+  const motionBtn = document.getElementById('motionBtn');
+  function setMotion(on) {
+    P.motion = on;
+    motionBtn.dataset.on = on ? '1' : '0';
+    motionBtn.classList.toggle('on', on);
+    motionBtn.textContent = on ? 'Motion: On' : 'Motion: Off';
+    if (!on) for (const d of dots) d.sc = 1;      // uniform size, frozen
+  }
+  motionBtn.addEventListener('click', () => setMotion(motionBtn.dataset.on !== '1'));
 
   dotSw.addEventListener('input', () => setDotColour(dotSw.value));
   dotHexIn.addEventListener('input', () => { const n = normHex(dotHexIn.value); if (n) setDotColour(n); });
