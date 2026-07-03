@@ -68,8 +68,7 @@
     <div class="ctl"><div class="top"><label>Flow</label><span class="val" id="flowV"></span></div><input id="flow" type="range" min="0" max="100" value="55"></div>
     <div class="ctl"><div class="top"><label>Randomness</label><span class="val" id="randV"></span></div><input id="rand" type="range" min="0" max="100" value="35"></div>
     <div class="ctl"><div class="top"><label>Density</label><span class="val" id="densityV"></span></div><input id="density" type="range" min="200" max="10000" value="5200" step="100"></div>
-    <div class="ctl"><div class="top"><label>Spacing</label><span class="val" id="spacingV"></span></div><input id="spacing" type="range" min="40" max="220" value="100"></div>
-    <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="90" value="32"></div>
+    <div class="ctl"><div class="top"><label>Dot size</label><span class="val" id="sizeV"></span></div><input id="size" type="range" min="10" max="140" value="32"></div>
 
     <div class="divider"></div>
     <div class="seg" id="shapeseg">
@@ -141,7 +140,7 @@
     return { x: dphidy, y: -dphidx };
   }
 
-  const P = { speed:.4, flow:.55, rand:.35, density:5200, spacing:1, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000', shape:'dots' };
+  const P = { speed:.4, flow:.55, rand:.35, density:5200, size:.32, bg:'black', col:'white', fill:'outside', dotHex:'#FFFFFF', bgHex:'#000000', shape:'dots' };
   let dots = [], t = 0, paused = false;
 
   // cut-out mask state — declared early so buildDots()/step() can reference it
@@ -154,27 +153,14 @@
   cv.width = RW; cv.height = RH;
 
   // ---- regular grid of equal dots ----
-  // Density sets the BASE lattice (baseCols/baseRows) — this also pins the dot
-  // size. Spacing then changes the live pitch by adding/removing homes, but the
-  // lattice always spans the full frame (0..1), so nothing zooms in or out — only
-  // the gap between the fixed-size dots changes.
-  let gridCols = 1, gridRows = 1, spacingX = 1, spacingY = 1, baseCols = 1, baseRows = 1;
+  // Density sets the lattice / dot count. Dot size scales each dot up to a full
+  // half-cell radius, at which point neighbours just touch.
+  let gridCols = 1, gridRows = 1, spacingX = 1, spacingY = 1;
 
   function buildDots() {
     const eff = P.density;
-    baseCols = Math.max(2, Math.round(Math.sqrt(eff * (RW / RH))));
-    baseRows = Math.max(2, Math.round(eff / baseCols));
-    applyGrid();
-  }
-
-  // Spacing tightens (Compact) or loosens (Wide) the pitch while still filling the
-  // whole frame — no zoom. Because dot size is pinned to the Density base cell,
-  // Compact packs the fixed-size dots until they overlap into a mesh, and Wide
-  // opens clear gaps between them.
-  function applyGrid() {
-    const S = P.spacing;                       // <1 = compact (denser), >1 = wide (sparser)
-    gridCols = Math.max(2, Math.round(baseCols / S));
-    gridRows = Math.max(2, Math.round(baseRows / S));
+    gridCols = Math.max(2, Math.round(Math.sqrt(eff * (RW / RH))));
+    gridRows = Math.max(2, Math.round(eff / gridCols));
     spacingX = 1 / gridCols; spacingY = 1 / gridRows;
     dots = [];
     for (let r = 0; r < gridRows; r++) for (let c = 0; c < gridCols; c++) {
@@ -183,10 +169,10 @@
     }
   }
 
-  // radius (px) pinned to the Density base cell + Dot size, NOT the live pitch —
-  // so Spacing never resizes dots. Packing them just makes fixed-size dots overlap.
+  // radius (px) from Dot size. Capped at half a cell so at max size neighbouring
+  // dots grow until they touch (diameter = full cell pitch).
   function dotRadiusPx(w, h) {
-    const cell = Math.min(w / baseCols, h / baseRows);
+    const cell = Math.min(spacingX * w, spacingY * h);
     return Math.max(0.5, Math.min(0.5 * cell, P.size * 0.5 * cell));
   }
 
@@ -256,14 +242,13 @@
 
   function bindSlider(id, key, fmt, transform) {
     const el = document.getElementById(id), out = document.getElementById(id + 'V');
-    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density') buildDots(); else if (key === 'spacing') applyGrid(); };
+    const apply = () => { const raw = +el.value; P[key] = transform ? transform(raw) : raw; out.textContent = fmt(raw); if (key === 'density') buildDots(); };
     el.addEventListener('input', apply); apply();
   }
   bindSlider('speed','speed', v=>v+'%', v=>v/100);
   bindSlider('flow','flow', v=>v+'%', v=>v/100);
   bindSlider('rand','rand', v=>v+'%', v=>v/100);
   bindSlider('density','density', v=>v, v=>v);
-  bindSlider('spacing','spacing', v => v < 90 ? 'Compact' : v > 110 ? 'Wide' : 'Normal', v=>v/100);
   bindSlider('size','size', v=>v+'%', v=>v/100);
 
   // ---- colour controls: swatch + hex text stay in sync ----
